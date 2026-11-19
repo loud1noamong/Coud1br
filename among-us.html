@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#111b2b">
+<title>COUD1BR — Jogo de navegador</title>
+<style>
+:root{color-scheme:dark;--bg:#102319;--panel:#183a2b;--line:#32634a;--cyan:#ff786f;--gold:#ffb36b}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#18283d,#0b111c);color:#f5f7fb;font:15px system-ui,Arial,sans-serif}
+main{max-width:1100px;margin:auto;padding:12px}header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+h1{font-size:clamp(20px,4vw,30px);margin:0}.tag{font-size:12px;color:#b9c9dc;background:#263a53;border:1px solid #425b77;padding:6px 10px;border-radius:20px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:12px}.stage{position:relative;background:#09121d;border:2px solid #435b78;border-radius:16px;padding:7px;min-width:0}
+canvas{display:block;width:100%;height:auto;border-radius:10px;touch-action:none;background:#16283a}
+aside{display:flex;flex-direction:column;gap:10px}.panel{background:#1d2b40;border:1px solid #435b78;border-radius:13px;padding:12px}
+.panel h2{font-size:15px;margin:0 0 8px}.stat{font-size:13px;color:#d5e1ee;line-height:1.7}.muted{color:#9eb1c7;font-size:12px;line-height:1.4}
+button{border:0;border-radius:10px;padding:10px 12px;background:#e5edf5;color:#132033;font-weight:750;font-size:13px;cursor:pointer}
+button:disabled{opacity:.35;cursor:not-allowed}.primary{background:#20b58f;color:#041b17}.danger{background:#d84b5b;color:#fff}.gold{background:#f2c94c;color:#2b2100}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.actions button{min-height:43px}
+#start{width:100%;margin-top:8px}.notice{min-height:42px;font-size:12px;color:#ffe28a;line-height:1.4;margin-top:8px}
+#log{font-size:12px;color:#c3d2e2;line-height:1.5;max-height:135px;overflow:auto}
+.overlay{position:absolute;inset:7px;border-radius:10px;background:#07101ddd;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;z-index:4}
+.dialog{width:min(440px,100%);max-height:95%;overflow:auto;background:#1e3046;border:1px solid #68809c;border-radius:16px;padding:18px}
+.dialog h2{margin:0 0 8px;font-size:23px}.dialog p{color:#c5d3e2;line-height:1.5;font-size:13px}
+.votegrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.votegrid button{padding:9px}
+#mobile{display:none;align-items:center;justify-content:space-between;gap:12px;padding:10px 2px}
+.pad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,42px);gap:4px}.pad button{padding:3px;font-size:19px;touch-action:none}.blank{visibility:hidden}
+.mobilehint{font-size:11px;color:#9eb1c7}
+@media(max-width:760px){main{padding:8px}.layout{grid-template-columns:1fr}aside{display:grid;grid-template-columns:1fr 1fr}.wide{grid-column:1/-1}#mobile{display:flex}.panel{padding:10px}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>🚀 COUD1BR — Among Us</h1><span class="tag">Protótipo independente • jogo local contra bots</span></header>
+<p style="margin:0 auto 12px;max-width:1100px;padding:0 12px"><a href="index.html" style="color:#ff9b91">← Voltar ao COUD1BR</a></p>
+<div class="layout">
+<section class="stage">
+<canvas id="game" width="900" height="600" aria-label="Mapa da nave"></canvas>
+<div class="overlay" id="overlay"><div class="dialog" id="dialog">
+<h2>Bem-vindo à nave!</h2>
+<p>Partida para um jogador contra cinco bots. Seu papel é sorteado em segredo a cada rodada. Este é um protótipo independente inspirado em jogos de dedução social — não é o jogo oficial.</p>
+<p><b>Tripulante:</b> conclua tarefas e descubra o impostor.<br><b>Impostor:</b> use sabotagens e tente vencer sem ser expulso.</p>
+<button class="primary" id="play">INICIAR PARTIDA</button>
+</div></div>
+</section>
+<aside>
+<section class="panel"><h2>📋 Situação</h2><div class="stat" id="stats">Aguardando início…</div><button id="start" class="primary">Nova partida</button></section>
+<section class="panel"><h2>🎮 Ações</h2><div class="actions">
+<button id="task" class="gold">🔧 Tarefa</button><button id="report">📣 Reunião</button>
+<button id="sabotage">⚡ Sabotar</button><button id="kill" class="danger">🔪 Eliminar</button>
+</div><div class="notice" id="notice">Use as setas, WASD ou os controles na tela. Os quadrados amarelos indicam tarefas.</div></section>
+<section class="panel wide"><h2>📡 Registro da nave</h2><div id="log">Sistemas aguardando início da partida.</div></section>
+</aside>
+</div>
+<div id="mobile">
+<div class="pad">
+<button class="blank">·</button><button data-dir="up">▲</button><button class="blank">·</button>
+<button data-dir="left">◀</button><button data-dir="down">▼</button><button data-dir="right">▶</button>
+</div><span class="mobilehint">Controles de movimento<br>toque e segure</span>
+</div>
+</main>
+<script>
+(()=>{
+'use strict';
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id),W=900,H=600;
+const rooms=[
+ {x:28,y:28,w:260,h:185,n:'CAFETERIA'},
+ {x:320,y:28,w:245,h:185,n:'ADMINISTRAÇÃO'},
+ {x:610,y:28,w:262,h:185,n:'ARMAS'},
+ {x:28,y:385,w:260,h:185,n:'ELÉTRICA'},
+ {x:320,y:385,w:245,h:185,n:'SEGURANÇA'},
+ {x:610,y:385,w:262,h:185,n:'MOTOR'},
+ {x:320,y:235,w:245,h:120,n:'CORREDOR'}
+];
+const corridors=[[288,115,320,115],[565,115,610,115],[158,213,158,385],[442,213,442,235],[442,355,442,385],[740,213,740,385],[288,475,320,475],[565,475,610,475]];
+const taskDefs=[
+ {x:95,y:85,label:'Cartão',room:'Cafeteria',done:false},
+ {x:495,y:85,label:'Dados',room:'Administração',done:false},
+ {x:780,y:155,label:'Armas',room:'Armas',done:false},
+ {x:100,y:500,label:'Fiação',room:'Elétrica',done:false},
+ {x:470,y:500,label:'Painel',room:'Segurança',done:false},
+ {x:785,y:500,label:'Motor',room:'Motor',done:false}
+];
+const crewNames=['Azul','Rosa','Amarelo','Verde','Roxo'];
+const crewColors=['#36a9e8','#ec83b7','#f0ce43','#52c98b','#a58be8'];
+const playerColor='#174d2b';
+let player,bots=[],all=[],tasks=[],myRole='tripulante',running=false,ended=false,meeting=false,keys={},last=0,logs=[],sabotage=null,sabotageTimer=0,round=0,bodyReported=null,killCooldown=0,botImp=null;
+const rnd=a=>a[Math.floor(Math.random()*a.length)],dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function say(s){$('notice').textContent=s}
+function log(s){logs.unshift(s);$('log').innerHTML=logs.slice(0,8).map(x=>'• '+x).join('<br>')}
+function update(){
+ const alive=all.filter(a=>a.alive),imps=alive.filter(a=>a.role==='impostor').length;
+ $('stats').innerHTML='<b>Seu papel:</b> '+(myRole==='impostor'?'🔪 IMPOSTOR':'🧑‍🚀 TRIPULANTE')+
+ '<br><b>Tarefas:</b> '+tasks.filter(t=>t.done).length+'/'+tasks.length+
+ '<br><b>Jogadores vivos:</b> '+alive.length+'/6'+
+ '<br><b>Impostores vivos:</b> '+imps+
+ '<br><b>Sabotagem:</b> '+(sabotage?'ATIVA':'normal');
+ $('task').disabled=!running||myRole!=='tripulante';
+ $('kill').disabled=!running||myRole!=='impostor'||killCooldown>0;
+ $('sabotage').disabled=!running||myRole!=='impostor'||!!sabotage;
+}
+function newGame(){
+ round++;player={id:0,name:'Você',x:450,y:295,color:playerColor,alive:true,role:'tripulante',speed:180};
+ bots=crewNames.map((name,i)=>({id:i+1,name,x:130+(i%3)*320,y:165+(i%2)*245,color:crewColors[i],alive:true,role:'tripulante',speed:65+Math.random()*18,target:null,think:0,taskCount:0}));
+ all=[player,...bots];const chosen=rnd(all);chosen.role='impostor';myRole=player.role;
+ tasks=taskDefs.map(t=>({...t,done:false}));sabotage=null;sabotageTimer=0;killCooldown=0;ended=false;meeting=false;running=true;logs=[];
+ log('Papéis sorteados em segredo. A partida começou!');
+ say(myRole==='impostor'?'Você é o impostor! Sabote e tente não ser descoberto.':'Você é tripulante! Complete as tarefas e fique atento.');
+ $('overlay').style.display='none';$('play').textContent='INICIAR PARTIDA';update();
+}
+function drawRoom(){
+ ctx.fillStyle='#17283a';ctx.fillRect(0,0,W,H);
+ // nave e salas
+ ctx.fillStyle='#263f54';ctx.fillRect(12,12,876,576);
+ rooms.forEach(r=>{ctx.fillStyle='#334f66';ctx.fillRect(r.x,r.y,r.w,r.h);ctx.strokeStyle='#7894aa';ctx.lineWidth=5;ctx.strokeRect(r.x,r.y,r.w,r.h);
+ ctx.fillStyle='#d8e7f2';ctx.font='bold 14px system-ui';ctx.fillText(r.n,r.x+12,r.y+23)});
+ ctx.strokeStyle='#58768c';ctx.lineWidth=30;ctx.lineCap='round';corridors.forEach(a=>{ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(a[2],a[3]);ctx.stroke()});
+ ctx.fillStyle='#1b3044';ctx.fillRect(350,260,185,70);ctx.strokeStyle='#6e8aa1';ctx.lineWidth=3;ctx.strokeRect(350,260,185,70);
+ // mesas
+ ctx.fillStyle='#71879a';ctx.beginPath();ctx.ellipse(160,145,43,23,0,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#91a6b8';ctx.beginPath();ctx.arc(440,290,20,0,Math.PI*2);ctx.fill();
+ tasks.forEach(t=>{if(!t.done){ctx.fillStyle='#ffd84d';ctx.fillRect(t.x-9,t.y-9,18,18);ctx.strokeStyle='#fff1a8';ctx.lineWidth=2;ctx.strokeRect(t.x-12,t.y-12,24,24)}});
+ if(sabotage){ctx.fillStyle='#ff4d59';ctx.font='bold 20px system-ui';ctx.textAlign='center';ctx.fillText('⚠ SABOTAGEM: '+sabotage.toUpperCase(),450,24);ctx.textAlign='left'}
+}
+function drawPlayer(a){
+ if(!a.alive)return;
+ ctx.save();ctx.translate(a.x,a.y);
+ ctx.fillStyle='#05080d';ctx.beginPath();ctx.roundRect(-16,-24,32,46,13);ctx.fill();
+ ctx.fillStyle=a.color;ctx.beginPath();ctx.roundRect(-13,-22,26,41,11);ctx.fill();
+ ctx.fillStyle='#05080d';ctx.beginPath();ctx.roundRect(-7,-29,22,13,6);ctx.fill();
+ ctx.fillStyle='#9ee5f5';ctx.beginPath();ctx.roundRect(-7,-27,18,10,5);ctx.fill();
+ ctx.fillStyle='#dffaff';ctx.beginPath();ctx.ellipse(1,-24,5,2.5,-.2,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#05080d';ctx.fillRect(-12,15,9,8);ctx.fillRect(4,15,9,8);
+ ctx.restore();
+ ctx.fillStyle='#fff';ctx.font='12px system-ui';ctx.textAlign='center';ctx.fillText(a===player?'VOCÊ':a.name,a.x,a.y-36);ctx.textAlign='left';
+}
+function draw(){drawRoom();all.forEach(drawPlayer);if(!running&&!ended){ctx.fillStyle='#fff';ctx.font='16px system-ui';ctx.fillText('Aguardando início…',380,570)}}
+function moveActor(a,dx,dy,dt){a.x=Math.max(28,Math.min(872,a.x+dx*dt));a.y=Math.max(28,Math.min(572,a.y+dy*dt))}
+function moveBots(dt){
+ bots.forEach(b=>{if(!b.alive)return;b.think-=dt;if(!b.target||b.think<=0){let available=tasks.filter(t=>!t.done);if(b.role==='tripulante'&&available.length)b.target=rnd(available);else b.target={x:40+Math.random()*820,y:40+Math.random()*520};b.think=2+Math.random()*3}
+ let dx=b.target.x-b.x,dy=b.target.y-b.y,d=Math.hypot(dx,dy);if(d>4){moveActor(b,dx/d,dy/d,dt*b.speed)}
+ if(b.role==='tripulante'&&d<20&&b.target.done!==undefined){b.taskCount++;b.target.done=true;b.target=null;log(b.name+' concluiu uma tarefa.')}
+ // impostor controlado pela IA pode tentar eliminar perto de tripulantes
+ if(b.role==='impostor'&&!meeting&&player.alive&&dist(b,player)<34&&Math.random()<dt*.10&&player.role==='tripulante'){
+   player.alive=false;log('Você foi eliminado pelo impostor!');finish('O impostor venceu. Você foi eliminado.');
+ }
+ });
+}
+function frame(ts){const dt=Math.min((ts-last)/1000||0,.04);last=ts;
+ if(running&&!meeting&&!ended){
+ let dx=0,dy=0;if(keys.left)dx--;if(keys.right)dx++;if(keys.up)dy--;if(keys.down)dy++;let l=Math.hypot(dx,dy)||1;moveActor(player,dx/l,dy/l,dt*190);
+ moveBots(dt);if(sabotage){sabotageTimer-=dt;if(sabotageTimer<=0){sabotage=null;log('Os bots resolveram a sabotagem.');say('Sabotagem resolvida!');update()}}
+ if(killCooldown>0)killCooldown-=dt;
+ checkWin();update();
+ }
+ draw();requestAnimationFrame(frame)}
+function finish(msg){if(ended)return;ended=true;running=false;$('overlay').style.display='flex';$('dialog').innerHTML='<h2>🏁 Fim de partida</h2><p>'+msg+'</p><p>Seu papel era: <b>'+(myRole==='impostor'?'IMPOSTOR':'TRIPULANTE')+'</b>.</p><button class="primary" id="again">JOGAR NOVAMENTE</button>'; $('again').onclick=newGame;update()}
+function checkWin(){if(!running)return;let alive=all.filter(a=>a.alive),imps=alive.filter(a=>a.role==='impostor').length,crew=alive.length-imps;
+ if(imps===0)finish('Os tripulantes venceram: o impostor foi eliminado!');
+ else if(imps>=crew)finish('Os impostores venceram: alcançaram a maioria!');
+ else if(myRole==='tripulante'&&tasks.length&&tasks.every(t=>t.done))finish('Os tripulantes venceram: todas as tarefas foram concluídas!');
+}
+function doTask(){if(!running||myRole!=='tripulante')return;let t=tasks.filter(t=>!t.done).sort((a,b)=>dist(player,a)-dist(player,b))[0];if(!t||dist(player,t)>55){say('Chegue perto de um quadrado amarelo para fazer a tarefa.');return}t.done=true;log('Você concluiu a tarefa: '+t.label+'.');say('Tarefa concluída!');checkWin();update()}
+function doKill(){if(!running||myRole!=='impostor'||killCooldown>0)return;let target=bots.filter(b=>b.alive&&b.role!=='impostor').sort((a,b)=>dist(player,a)-dist(player,b))[0];if(!target||dist(player,target)>55){say('Chegue perto de um tripulante bot para eliminar.');return}target.alive=false;killCooldown=12;log('Você eliminou '+target.name+'.');say('Eliminação realizada. Afaste-se da área!');update();checkWin()}
+function doSabotage(){if(!running||myRole!=='impostor'||sabotage)return;sabotage=rnd(['luzes','oxigênio','reator','comunicações']);sabotageTimer=18;log('Você iniciou uma sabotagem: '+sabotage+'.');say('Sabotagem ativa! Os bots tentarão resolver.');update()}
+function meetingUI(){if(!running||meeting)return;meeting=true;const candidates=all.filter(a=>a.alive&&a!==player);$('overlay').style.display='flex';$('dialog').innerHTML='<h2>📣 Reunião de emergência</h2><p>Quem você acha que é o impostor? Escolha alguém para votar. (Nesta versão de teste, a votação é simplificada.)</p><div class="votegrid" id="votegrid"></div><button id="skip" style="margin-top:8px">Pular votação</button>';
+ const grid=$('votegrid');candidates.forEach(a=>{let b=document.createElement('button');b.textContent=a.name;b.onclick=()=>resolveVote(a);grid.appendChild(b)});$('skip').onclick=()=>resolveVote(null)}
+function resolveVote(target){$('overlay').style.display='none';meeting=false;if(target){target.alive=false;log('A votação expulsou '+target.name+'.');say(target.name+' foi expulso.');}else{log('Todos pularam a votação.');say('Votação pulada.')}checkWin();update()}
+$('play').onclick=newGame;$('start').onclick=()=>{if(ended){newGame();return}if(!running)newGame();else{if(confirm('Começar uma nova partida? A partida atual será encerrada.'))newGame()}};
+$('task').onclick=doTask;$('kill').onclick=doKill;$('sabotage').onclick=doSabotage;$('report').onclick=meetingUI;
+const keyMap={ArrowUp:'up',w:'up',ArrowDown:'down',s:'down',ArrowLeft:'left',a:'left',ArrowRight:'right',d:'right'};
+document.addEventListener('keydown',e=>{if(keyMap[e.key]){keys[keyMap[e.key]]=true;e.preventDefault()}});
+document.addEventListener('keyup',e=>{if(keyMap[e.key])keys[keyMap[e.key]]=false});
+document.querySelectorAll('[data-dir]').forEach(btn=>{let d=btn.dataset.dir;btn.addEventListener('pointerdown',e=>{e.preventDefault();keys[d]=true});['pointerup','pointerleave','pointercancel'].forEach(ev=>btn.addEventListener(ev,()=>keys[d]=false))});
+draw();requestAnimationFrame(frame);
+})();
+</script>
+</body></html>
